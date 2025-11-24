@@ -50,16 +50,21 @@ if not os.path.exists(MODEL_PATH):
     
     print(">>> Modelo descargado correctamente. Intentando cargar...")
     
-# Carga del modelo 
+import pickle
+# Asegúrate de que joblib sigue importado si lo usas en otra parte
+
+# Carga del modelo (USANDO PICKLE NATIVO)
 try:
-    # Esta línea ahora debería funcionar si el archivo se descargó correctamente
-    modelos = joblib.load(MODEL_PATH) 
-    print(">>> Modelo cargado exitosamente.")
+    with open(MODEL_PATH, 'rb') as f:
+        modelos = pickle.load(f)
+    print(">>> Modelo cargado exitosamente con PICKLE.")
 except Exception as e:
-    # Si sigue fallando aquí, es que la versión de scikit-learn NO es la correcta
-    print(f"Error CRÍTICO al cargar el modelo: {e}")
-    print("Asegúrese de que la versión de scikit-learn en requirements.txt es la misma que usó para guardar el modelo.")
+    # Si sigue fallando, es una incompatibilidad profunda (probablemente NumPy/Python)
+    print(f"Error CRÍTICO al cargar el modelo con pickle: {e}")
+    print("El error de incompatibilidad de versiones (KeyError: 118) persiste.")
+    # Mantenemos el 'raise' para que Railway registre el fallo.
     raise
+
 # FastAPI + CORS
 app = FastAPI()
 
