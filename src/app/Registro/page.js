@@ -39,23 +39,24 @@ export default function Registro() {
         return;
       }
     }
-
+    
     try {
-      const response = await fetch("https://healthpattern-production.up.railway.app/predict", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          services: form.services,
-          arrests: form.arrests,
-          stfips: form.stfips,
-          sub1: form.sub1,
-          freq1: form.freq1,
-          priminc: form.priminc,
-          freqSelfHelp: form.freqSelfHelp,
-          detnlf: form.detnlf,
-          detcrim: form.detcrim,
-        }),
-      });
+  const response = await fetch("http://127.0.0.1:8000/predict", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      services: form.services,
+      arrests: form.arrests,
+      stfips: form.stfips,
+      sub1: form.sub1,
+      freq1: form.freq1,
+      priminc: form.priminc,
+      freqSelfHelp: form.freqSelfHelp,
+      detnlf: form.detnlf,
+      detcrim: form.detcrim,
+    }),
+  });
+
 
       const data = await response.json();
       console.log("Respuesta API:", data);

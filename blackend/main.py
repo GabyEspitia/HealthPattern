@@ -8,39 +8,35 @@ from fastapi.middleware.cors import CORSMiddleware
 # ============================
 # IMPORTAR MAPEOS
 # ============================
-from codificacion import (
+
+from .codificacion import (
     mapServices, mapArrests, mapFIPS, mapSubstance,
     mapFreqUse, mapIncome, mapSelfHelp, mapDetnlf, mapDetcrim
 )
 
-# ============================
-# CARGA DEL MODELO DESDE PKL EN /blackend/models/
-# ============================
 
-MODEL_PATH = "blackend/models/modelo_final.pkl"
+# CARGA DEL MODELO PKL LOCAL
+
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "modelo_final.pkl")
+
 
 if not os.path.exists(MODEL_PATH):
-    raise Exception(f"❌ No se encontró el modelo en {MODEL_PATH}")
+    raise Exception(f"No se encontró el modelo en: {MODEL_PATH}")
 
-try:
-    modelos = joblib.load(MODEL_PATH)
-    print(">>> Modelo cargado correctamente desde:", MODEL_PATH)
-except Exception as e:
-    print(f"❌ Error al cargar modelo: {e}")
-    raise e
-
+modelos = joblib.load(MODEL_PATH)
 model_bin = modelos["modelo_binario"]
 model_multi = modelos["modelo_multiclase"]
 
 # ============================
-# INICIAR FastAPI
+# INICIAR API
 # ============================
+
 app = FastAPI()
 
+# Permitir TODO en local
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -48,18 +44,20 @@ app.add_middleware(
 # ============================
 # MAPEO DE RAZONES
 # ============================
+
 razones_texto = {
-    2: ("Abandono del tratamiento", "Reforzar adherencia, seguimiento semanal."),
-    3: ("Finalización por parte del centro", "Revisar historial y confirmar cierre administrativo."),
-    4: ("Traslado a otro programa", "Coordinar continuidad del proceso con el nuevo centro."),
-    5: ("Encarcelado", "Notificar autoridades sanitarias y evaluar continuidad intramuros."),
-    6: ("Fallecido", "Proceder con protocolos institucionales."),
-    7: ("Otros", "Revisar caso de forma individual.")
+    2: ("Abandono del tratamiento", "Reforzar adherencia."),
+    3: ("Finalización por parte del centro", "Confirmar cierre."),
+    4: ("Traslado", "Coordinar proceso."),
+    5: ("Encarcelado", "Activar protocolos."),
+    6: ("Fallecido", "Seguir protocolos institucionales."),
+    7: ("Otros", "Revisar caso.")
 }
 
 # ============================
-# ENTRADA DESDE EL FRONTEND
+# ENTRADA DEL FRONT
 # ============================
+
 class RegistroPaciente(BaseModel):
     services: str
     arrests: str
@@ -71,9 +69,11 @@ class RegistroPaciente(BaseModel):
     detnlf: str
     detcrim: str
 
+
 # ============================
 # FUNCION DE CODIFICACIÓN
 # ============================
+
 def encode(form: RegistroPaciente):
     return [
         mapServices[form.services],
@@ -88,35 +88,33 @@ def encode(form: RegistroPaciente):
     ]
 
 # ============================
-# ENDPOINT DE PRUEBA
+# ENDPOINT DE TEST
 # ============================
+
 @app.get("/")
 def root():
-    return {"status": "API funcionando ✔️ desde /blackend"}
+    return {"status": "API funcionando en local ✔"}
 
 # ============================
 # ENDPOINT DE PREDICCIÓN
 # ============================
+
 @app.post("/predict")
 def predict(form: RegistroPaciente):
-
     X = np.array([encode(form)])
 
-    # Predicción binaria
     pred_bin = model_bin.predict(X)[0]
 
     if pred_bin == 1:
         return {
             "resultado": "Completed",
-            "detalle": "El paciente completará el tratamiento.",
-            "recomendacion": "Continuar proceso habitual. Sin alertas clínicas."
+            "detalle": "El paciente completará el tratamiento",
+            "recomendacion": "Continuar proceso habitual"
         }
 
-    # Predicción de razón
     pred_reason = int(model_multi.predict(X)[0])
     razon_texto, recomendacion = razones_texto.get(
-        pred_reason,
-        ("Motivo desconocido", "Revisar el caso manualmente.")
+        pred_reason, ("Motivo desconocido", "Revisar manualmente")
     )
 
     return {
@@ -129,10 +127,7 @@ def predict(form: RegistroPaciente):
 # ============================
 # EJECUCIÓN LOCAL
 # ============================
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", 8000))
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8000)
