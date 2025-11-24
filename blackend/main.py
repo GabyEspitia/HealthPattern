@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # ============================
 # IMPORTAR MAPEOS
 # ============================
-from .codificacion import (
+from codificacion import (
     mapServices, mapArrests, mapFIPS, mapSubstance,
     mapFreqUse, mapIncome, mapSelfHelp, mapDetnlf, mapDetcrim
 )
