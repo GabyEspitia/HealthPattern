@@ -1,6 +1,6 @@
 import joblib
 import numpy as np
-from fastapi import FastAPI
+from fastapi import FastAPI, requests
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,6 +9,26 @@ from .codificacion import (
     mapServices, mapArrests, mapFIPS, mapSubstance,
     mapFreqUse, mapIncome, mapSelfHelp, mapDetnlf, mapDetcrim
 )
+
+# ============================
+# DESCARGAR MODELO SI NO EXISTE
+# ============================
+MODEL_PATH = "blackend/models/modelo_final.pkl"
+MODEL_URL = "https://drive.google.com/uc?export=download&id=1DPvGTds57i2CGVMPe0ueMXRK0XFszuZi"
+
+os.makedirs("blackend/models", exist_ok=True)
+
+if not os.path.exists(MODEL_PATH):
+    print(">>> Modelo no encontrado. Descargando desde Google Drive...")
+    r = requests.get(MODEL_URL)
+
+    if r.status_code != 200:
+        raise Exception(f"Error descargando modelo: {r.status_code}")
+
+    with open(MODEL_PATH, "wb") as f:
+        f.write(r.content)
+
+    print(">>> Modelo descargado correctamente.")
 
 # ============================
 # FastAPI + CORS
