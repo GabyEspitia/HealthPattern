@@ -11,29 +11,56 @@ from .codificacion import (
     mapFreqUse, mapIncome, mapSelfHelp, mapDetnlf, mapDetcrim
 )
 
-# ============================
-# DESCARGAR MODELO SI NO EXISTE
-# ============================
+# DESCARGAR MODELO SI NO EXISTE (VERSIÓN CORREGIDA)
 MODEL_PATH = "blackend/models/modelo_final.pkl"
 MODEL_URL = "https://drive.google.com/uc?export=download&id=1DPvGTds57i2CGVMPe0ueMXRK0XFszuZi"
+CHUNK_SIZE = 32768 # Tamaño de bloque para escribir
 
 os.makedirs("blackend/models", exist_ok=True)
 
 if not os.path.exists(MODEL_PATH):
-    print(">>> Modelo no encontrado. Descargando desde Google Drive...")
-    r = requests.get(MODEL_URL)
+    print(">>> Modelo no encontrado. Iniciando descarga desde Google Drive...")
+    
+    # Iniciar la primera solicitud para obtener el token de confirmación (confirm token)
+    session = requests.Session()
+    response = session.get(MODEL_URL, stream=True)
+    
+    # 1. Verificar si Google emite la advertencia de "demasiado grande para escanear"
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            token = value
+            break
 
-    if r.status_code != 200:
-        raise Exception(f"Error descargando modelo: {r.status_code}")
+    # 2. Si hay token, se crea una nueva URL de descarga con la confirmación
+    if token:
+        params = {'id': MODEL_URL.split('=')[-1], 'confirm': token}
+        MODEL_URL = 'https://drive.google.com/uc?export=download'
+        response = session.get(MODEL_URL, params=params, stream=True)
 
+    # 3. Escribir el contenido descargado
+    if response.status_code != 200:
+        raise Exception(f"Error descargando modelo: Código {response.status_code} - URL: {MODEL_URL}")
+    
+    # Guardar en bloques (chunks) para archivos grandes
     with open(MODEL_PATH, "wb") as f:
-        f.write(r.content)
-
-    print(">>> Modelo descargado correctamente.")
-
-# ============================
+        for chunk in response.iter_content(CHUNK_SIZE):
+            if chunk: # filtrar keep-alive new chunks
+                f.write(chunk)
+    
+    print(">>> Modelo descargado correctamente. Intentando cargar...")
+    
+# Carga del modelo 
+try:
+    # Esta línea ahora debería funcionar si el archivo se descargó correctamente
+    modelos = joblib.load(MODEL_PATH) 
+    print(">>> Modelo cargado exitosamente.")
+except Exception as e:
+    # Si sigue fallando aquí, es que la versión de scikit-learn NO es la correcta
+    print(f"Error CRÍTICO al cargar el modelo: {e}")
+    print("Asegúrese de que la versión de scikit-learn en requirements.txt es la misma que usó para guardar el modelo.")
+    raise
 # FastAPI + CORS
-# ============================
 app = FastAPI()
 
 app.add_middleware(
