@@ -1,0 +1,1 @@
+Unzip, cd into folder, run: npm install && npm run dev, then open http://localhost:3000
