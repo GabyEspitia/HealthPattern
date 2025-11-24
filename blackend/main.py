@@ -1,83 +1,52 @@
 import os
 import joblib
 import numpy as np
-from fastapi import FastAPI, requests
+from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
-# Importar los mapeos desde codificacion.py
+# ============================
+# IMPORTAR MAPEOS
+# ============================
 from .codificacion import (
     mapServices, mapArrests, mapFIPS, mapSubstance,
     mapFreqUse, mapIncome, mapSelfHelp, mapDetnlf, mapDetcrim
 )
 
-import os
-import joblib 
-import gdown # Necesario para la descarga robusta de Google Drive
-import pickle # Lo mantenemos por si acaso, pero usaremos joblib
-
 # ============================
-# DESCARGAR MODELO CON GDOWN
+# CARGA DEL MODELO DESDE PKL EN /blackend/models/
 # ============================
 
-# ⚠️ NOTA: El ID de archivo se extrae de la URL: 1DPvGTds57i2CGVMPe0ueMXRK0XFszuZi
-# Usamos el ID directamente, ya que gdown es más robusto que requests.
-DRIVE_FILE_ID = "1DPvGTds57i2CGVMPe0ueMXRK0XFszuZi" 
-MODEL_PATH = "blackend/models/modelo_final.pkl" 
-MODEL_DIR = os.path.dirname(MODEL_PATH)
-
-# Crear el directorio si no existe
-os.makedirs(MODEL_DIR, exist_ok=True)
+MODEL_PATH = "blackend/models/modelo_final.pkl"
 
 if not os.path.exists(MODEL_PATH):
-    print(">>> Modelo no encontrado. Iniciando descarga robusta con gdown...")
-    try:
-        # Descarga el archivo de Drive usando el ID a la ruta local
-        # quiet=False para ver la barra de progreso en los logs (útil para el debug)
-        gdown.download(id=DRIVE_FILE_ID, output=MODEL_PATH, quiet=False)
-        print(">>> Modelo descargado correctamente con gdown.")
+    raise Exception(f"❌ No se encontró el modelo en {MODEL_PATH}")
 
-    except Exception as e:
-        print(f"Error CRÍTICO al descargar el modelo con gdown: {e}")
-        # Lanza una excepción para que el servicio se detenga si falla la descarga
-        raise Exception("Fallo crítico en la descarga del modelo con gdown.")
-
-# ============================
-# Carga del modelo (Volvemos a joblib con versiones fijadas)
-# ============================
 try:
-    # Usamos joblib.load, ya que las versiones están fijadas
-    modelos = joblib.load(MODEL_PATH) 
-    print(">>> Modelo cargado exitosamente con joblib y versiones fijadas.")
+    modelos = joblib.load(MODEL_PATH)
+    print(">>> Modelo cargado correctamente desde:", MODEL_PATH)
 except Exception as e:
-    # Si falla aquí, y el archivo fue descargado limpio, la incompatibilidad es insalvable sin re-guardar.
-    print(f"Error CRÍTICO al cargar el modelo: {e}")
-    print("ADVERTENCIA: A pesar de la descarga limpia con gdown, el modelo es incompatible con las versiones instaladas.")
-    raise
-
-# FastAPI + CORS
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],     
-    allow_credentials=True,
-    allow_methods=["*"],    
-    allow_headers=["*"],
-)
-
-
-# ============================
-# Cargar el modelo final
-# ============================
-modelos = joblib.load("blackend/models/modelo_final.pkl")
+    print(f"❌ Error al cargar modelo: {e}")
+    raise e
 
 model_bin = modelos["modelo_binario"]
 model_multi = modelos["modelo_multiclase"]
 
+# ============================
+# INICIAR FastAPI
+# ============================
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ============================
-# Mapeo de razones → texto + recomendaciones
+# MAPEO DE RAZONES
 # ============================
 razones_texto = {
     2: ("Abandono del tratamiento", "Reforzar adherencia, seguimiento semanal."),
@@ -85,12 +54,11 @@ razones_texto = {
     4: ("Traslado a otro programa", "Coordinar continuidad del proceso con el nuevo centro."),
     5: ("Encarcelado", "Notificar autoridades sanitarias y evaluar continuidad intramuros."),
     6: ("Fallecido", "Proceder con protocolos institucionales."),
-    7: ("Otros", "Revisar caso de forma individual."),
+    7: ("Otros", "Revisar caso de forma individual.")
 }
 
-
 # ============================
-# Datos esperados desde el frontend
+# ENTRADA DESDE EL FRONTEND
 # ============================
 class RegistroPaciente(BaseModel):
     services: str
@@ -103,12 +71,10 @@ class RegistroPaciente(BaseModel):
     detnlf: str
     detcrim: str
 
-
 # ============================
-# Función de codificación
+# FUNCION DE CODIFICACIÓN
 # ============================
 def encode(form: RegistroPaciente):
-
     return [
         mapServices[form.services],
         mapArrests[form.arrests],
@@ -121,19 +87,24 @@ def encode(form: RegistroPaciente):
         mapDetcrim[form.detcrim],
     ]
 
+# ============================
+# ENDPOINT DE PRUEBA
+# ============================
+@app.get("/")
+def root():
+    return {"status": "API funcionando ✔️ desde /blackend"}
 
 # ============================
-# Endpoint de predicción
+# ENDPOINT DE PREDICCIÓN
 # ============================
 @app.post("/predict")
 def predict(form: RegistroPaciente):
 
     X = np.array([encode(form)])
 
-    # Modelo binario
+    # Predicción binaria
     pred_bin = model_bin.predict(X)[0]
 
-    # Caso 1: Sí completa
     if pred_bin == 1:
         return {
             "resultado": "Completed",
@@ -141,9 +112,8 @@ def predict(form: RegistroPaciente):
             "recomendacion": "Continuar proceso habitual. Sin alertas clínicas."
         }
 
-    # Caso 2: No completa → razón
+    # Predicción de razón
     pred_reason = int(model_multi.predict(X)[0])
-
     razon_texto, recomendacion = razones_texto.get(
         pred_reason,
         ("Motivo desconocido", "Revisar el caso manualmente.")
@@ -155,8 +125,10 @@ def predict(form: RegistroPaciente):
         "razon_texto": razon_texto,
         "recomendacion": recomendacion
     }
-import os
 
+# ============================
+# EJECUCIÓN LOCAL
+# ============================
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
