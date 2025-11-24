@@ -11,58 +11,48 @@ from .codificacion import (
     mapFreqUse, mapIncome, mapSelfHelp, mapDetnlf, mapDetcrim
 )
 
-# DESCARGAR MODELO SI NO EXISTE (VERSIÓN CORREGIDA)
-MODEL_PATH = "blackend/models/modelo_final.pkl"
-MODEL_URL = "https://drive.google.com/uc?export=download&id=1DPvGTds57i2CGVMPe0ueMXRK0XFszuZi"
-CHUNK_SIZE = 32768 # Tamaño de bloque para escribir
+import os
+import joblib 
+import gdown # Necesario para la descarga robusta de Google Drive
+import pickle # Lo mantenemos por si acaso, pero usaremos joblib
 
-os.makedirs("blackend/models", exist_ok=True)
+# ============================
+# DESCARGAR MODELO CON GDOWN
+# ============================
+
+# ⚠️ NOTA: El ID de archivo se extrae de la URL: 1DPvGTds57i2CGVMPe0ueMXRK0XFszuZi
+# Usamos el ID directamente, ya que gdown es más robusto que requests.
+DRIVE_FILE_ID = "1DPvGTds57i2CGVMPe0ueMXRK0XFszuZi" 
+MODEL_PATH = "blackend/models/modelo_final.pkl" 
+MODEL_DIR = os.path.dirname(MODEL_PATH)
+
+# Crear el directorio si no existe
+os.makedirs(MODEL_DIR, exist_ok=True)
 
 if not os.path.exists(MODEL_PATH):
-    print(">>> Modelo no encontrado. Iniciando descarga desde Google Drive...")
-    
-    # Iniciar la primera solicitud para obtener el token de confirmación (confirm token)
-    session = requests.Session()
-    response = session.get(MODEL_URL, stream=True)
-    
-    # 1. Verificar si Google emite la advertencia de "demasiado grande para escanear"
-    token = None
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            token = value
-            break
+    print(">>> Modelo no encontrado. Iniciando descarga robusta con gdown...")
+    try:
+        # Descarga el archivo de Drive usando el ID a la ruta local
+        # quiet=False para ver la barra de progreso en los logs (útil para el debug)
+        gdown.download(id=DRIVE_FILE_ID, output=MODEL_PATH, quiet=False)
+        print(">>> Modelo descargado correctamente con gdown.")
 
-    # 2. Si hay token, se crea una nueva URL de descarga con la confirmación
-    if token:
-        params = {'id': MODEL_URL.split('=')[-1], 'confirm': token}
-        MODEL_URL = 'https://drive.google.com/uc?export=download'
-        response = session.get(MODEL_URL, params=params, stream=True)
+    except Exception as e:
+        print(f"Error CRÍTICO al descargar el modelo con gdown: {e}")
+        # Lanza una excepción para que el servicio se detenga si falla la descarga
+        raise Exception("Fallo crítico en la descarga del modelo con gdown.")
 
-    # 3. Escribir el contenido descargado
-    if response.status_code != 200:
-        raise Exception(f"Error descargando modelo: Código {response.status_code} - URL: {MODEL_URL}")
-    
-    # Guardar en bloques (chunks) para archivos grandes
-    with open(MODEL_PATH, "wb") as f:
-        for chunk in response.iter_content(CHUNK_SIZE):
-            if chunk: # filtrar keep-alive new chunks
-                f.write(chunk)
-    
-    print(">>> Modelo descargado correctamente. Intentando cargar...")
-    
-import pickle
-# Asegúrate de que joblib sigue importado si lo usas en otra parte
-
-# Carga del modelo (USANDO PICKLE NATIVO)
+# ============================
+# Carga del modelo (Volvemos a joblib con versiones fijadas)
+# ============================
 try:
-    with open(MODEL_PATH, 'rb') as f:
-        modelos = pickle.load(f)
-    print(">>> Modelo cargado exitosamente con PICKLE.")
+    # Usamos joblib.load, ya que las versiones están fijadas
+    modelos = joblib.load(MODEL_PATH) 
+    print(">>> Modelo cargado exitosamente con joblib y versiones fijadas.")
 except Exception as e:
-    # Si sigue fallando, es una incompatibilidad profunda (probablemente NumPy/Python)
-    print(f"Error CRÍTICO al cargar el modelo con pickle: {e}")
-    print("El error de incompatibilidad de versiones (KeyError: 118) persiste.")
-    # Mantenemos el 'raise' para que Railway registre el fallo.
+    # Si falla aquí, y el archivo fue descargado limpio, la incompatibilidad es insalvable sin re-guardar.
+    print(f"Error CRÍTICO al cargar el modelo: {e}")
+    print("ADVERTENCIA: A pesar de la descarga limpia con gdown, el modelo es incompatible con las versiones instaladas.")
     raise
 
 # FastAPI + CORS
